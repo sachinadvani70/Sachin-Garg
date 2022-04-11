@@ -1,0 +1,112 @@
+---
+title: "Lab 6"
+author: "SACHIN GARG"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+#Visualization with the package ggplot2
+
+I highly recommend using the [ggplot cheat sheet](https://rstudio.com/wp-content/uploads/2015/03/ggplot2-cheatsheet.pdf) as a reference resource. You will see questions that say "Create the best-looking plot". Among other things you may choose to do, remember to label the axes using real English, provide a title and subtitle. You may want to pick a theme and color scheme that you like and keep that constant throughout this lab. The default is fine if you are running short of time.
+
+Load up the `GSSvocab` dataset in package `carData` as `X` and drop all observations with missing measurements. This will be a very hard visualization exercise since there is not a good model for vocab.
+
+```{r}
+pacman::p_load(carData)
+X = carData::GSSvocab
+X = na.omit(X)
+```
+
+Briefly summarize the documentation on this dataset. What is the data type of each variable? What do you think is the response variable the collectors of this data had in mind?
+# year: It is a ordinal categorical variable. 
+# gender: It is a binary or/dummy variable because we have only two outputs male or female. 
+# nativeBorn: It is also a binary or/dummy variable because it has only two outputs yes or no. 
+# ageGroup: It is ordinal categorical variable. More precisely, it is interval level of measurement because we can categorized and ranked it in evenly spaced. 
+# educGroup: It is ordinal categorical variable because the output can be wriiten in an order. 
+# vocab, age, educ: These are discrete variables because its value can be any integer. 
+
+
+Create two different plots and identify the best-looking plot you can to examine the `age` variable. Save the best looking plot as an appropriately-named PDF.
+
+```{r}
+library(ggplot2)
+base = ggplot(X,aes(age))
+base + geom_histogram() #best-looking plot
+base + geom_density()
+base + geom_freqpoly()
+```
+
+Create two different plots and identify the best looking plot you can to examine the `vocab` variable. Save the best looking plot as an appropriately-named PDF.
+
+```{r}
+X$vocab = factor(X$vocab)
+base = ggplot(X, aes(vocab))
+base + geom_bar() #best looking plot
+base + geom_density()
+```
+
+Create the best-looking plot you can to examine the `ageGroup` variable by `gender`. Does there appear to be an association? There are many ways to do this.
+
+```{r}
+ggplot(X) + 
+  geom_jitter(aes(x = ageGroup, y = gender), size = 0.000001)
+```
+#There doesn't appear to be any association between ageGroup and gender. 
+
+Create the best-looking plot you can to examine the `vocab` variable by `age`. Does there appear to be an association?
+
+```{r}
+ggplot(X) + 
+  geom_boxplot(aes(x = vocab, y = age))
+```
+# It doesn't appear to be an association between vocab and age. Because their mean values are almost same. 
+
+Add an estimate of $f(x)$ using the smoothing geometry to the previous plot. Does there appear to be an association now?
+
+```{r}
+ggplot(X) + 
+  geom_boxplot(aes(x = vocab, y = age)) + 
+  geom_smooth(x, "3R")
+```
+
+Using the plot from the previous question, create the best looking plot overloading with variable `gender`. Does there appear to be an interaction of `gender` and `age`?
+
+```{r}
+ggplot(X) + 
+  geom_boxplot(aes(fill = gender, x = vocab, y = age))
+```
+# Females seems to get little better vocabulary test scores than males. 
+
+Using the plot from the previous question, create the best looking plot overloading with variable `nativeBorn`. Does there appear to be an interaction of `nativeBorn` and `age`?
+
+```{r}
+ggplot(X) + 
+  geom_col(aes(fill = nativeBorn, x = vocab, y = age)) 
+```
+# Nativeborn used to get more vocabulary test scores relative to non-nativeborn. 
+
+Create two different plots and identify the best-looking plot you can to examine the `vocab` variable by `educGroup`. Does there appear to be an association?
+
+```{r}
+ggplot(X) + 
+  geom_jitter(aes(x = vocab, y = educGroup)) 
+ggplot(X) + 
+  geom_bin2d(aes(x = vocab, y = educGroup)) #best looking plot
+```
+# The maximum number of people has scored 6 in thier vocabulary test are 12 years in education. 
+
+Using the best-looking plot from the previous question, create the best looking overloading with variable `gender`. Does there appear to be an interaction of `gender` and `educGroup`?
+
+```{r}
+ggplot(X) + 
+  geom_bin2d(aes(fill = gender, x = vocab, y = educGroup))
+```
+# There doesn't appear to be an interaction of gender and eduGroup. 
+
+Using facets, examine the relationship between `vocab` and `ageGroup`. You can drop year level `(Other)`. Are we getting dumber?
+
+```{r}
+base = ggplot(X, aes(x = vocab, y = ageGroup, group = vocab)) + geom_boxplot(aes(fill = vocab)) 
+base + facet_grid(ageGroup ~ vocab)
+```
