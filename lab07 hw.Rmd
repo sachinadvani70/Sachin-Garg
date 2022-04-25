@@ -1,0 +1,744 @@
+---
+title: "Lab 7"
+author: "Your Name Here"
+output: pdf_document
+---
+
+#YARF
+
+For the next labs, I want you to make some use of my package. Make sure you have a JDK installed first
+
+https://www.oracle.com/java/technologies/downloads/
+
+Then try to install rJava
+
+```{r}
+options(java.parameters = "-Xmx4000m")
+pacman::p_load(rJava) 
+#Try install.packages("rJava") library(rJava). Otherwise download latest jdk from the above link. 
+.jinit()
+```
+
+If you have error, messages, try to google them. Everyone has trouble with rJava!
+
+If you made it past that, please try to run the following:
+
+```{r}
+if (!pacman::p_isinstalled(YARF)){
+  pacman::p_install_gh("kapelner/YARF/YARFJARs", ref = "dev")
+  pacman::p_install_gh("kapelner/YARF/YARF", ref = "dev", force = TRUE)
+}
+pacman::p_load(YARF)
+```
+
+Please try to fix the error messages (if they exist) as best as you can. I can help on slack.
+
+#Rcpp 
+
+We will get some experience with speeding up R code using C++ via the `Rcpp` package.
+
+First, clear the workspace and load the `Rcpp` package.
+
+```{r}
+pacman::p_load(Rcpp)
+```
+
+Create a variable `n` to be 10 and a vaiable `Nvec` to be 100 initially. Create a random vector via `rnorm` `Nvec` times and load it into a `Nvec` x `n` dimensional matrix.
+
+```{r}
+n = 10
+Nvec = 100
+X = matrix(rnorm(n*Nvec), nrow = Nvec)
+```
+
+Write a function `all_angles` that measures the angle between each of the pairs of vectors. You should measure the vector on a scale of 0 to 180 degrees with negative angles coerced to be positive.
+
+```{r}
+all_angles = function(X){
+  n = nrow(X)
+  D = matrix(NA, nrow = n, ncol = n)
+  for(i in 1:(n-1)){
+    for(j in (i+1):(n)){
+      x_i = X[i,]
+      x_j = X[j,]
+      D[i,j] = abs(acos(sum(x_i*x_j)/sqrt(sum(x_i^2)*sum(x_j^2))) * (180/pi))
+    }
+  }
+  D
+}
+```
+
+Plot the density of these angles.
+
+```{r}
+ggplot(X,aes(all_angles(X))) +
+  geom_density()
+```
+
+Write an Rcpp function `all_angles_cpp` that does the same thing. Use an IDE if you want, but write it below in-line.
+
+```{r}
+cppFunction('
+  NumericMatrix all_angles_cpp(NumericMatrix X){
+  int n = X.nrow();
+  int p = X.ncol();
+  NumericMatrix D(n,n);
+  std::fill(D.begin(),D.end(), NA_REAL);
+  for (int i =0; i<(n-1); i++){
+    for (int j=i+1;j<n;j++){
+      double dot_product=0;
+      double length_x_i_sq =0;
+      double length_x_j_sq =0;
+      for (int k=0; k<p;k++){
+        dot_product += X(i,k)*X(j,k);
+        length_x_i_sq += pow(X(i,k),2);
+        length_x_j_sq += pow(X(j,k),2);
+      }
+      D(i,j) = abs(acos(dot_product/sqrt(length_x_i_sq*length_x_j_sq))*(180/M_PI));
+    }
+  }
+    return D;
+  }
+  ')
+Dcpp = all_angles_cpp(X)
+#D[1:5,1:5]
+Dcpp[1:5,1:5]
+                  
+```
+
+Test the time difference between these functions for `n = 1000` and `Nvec = 100, 500, 1000, 5000` using the package `microbenchmark`.  Store the results in a matrix with rows representing `Nvec` and two columns for base R and Rcpp.
+
+```{r}
+Nvecs = c(100, 500, 1000, 5000)
+pacman::p_load(microbenchmark)
+
+
+results_for_time = data.frame(
+  Nvec = numeric(),
+  time_for_base_R = numeric(),
+  time_for_cpp = numeric()
+)
+for (i in 1 : length(Nvecs)){
+  Nvec = Nvecs[i]
+  X = matrix(rnorm(n * Nvec), nrow = Nvec)
+  result = microbenchmark(
+    base_R =all_angles(X),
+    Rcpp = all_angles_cpp(X),
+    times = 1
+  )
+  results_for_time = rbind(results_for_time, data.frame(
+    Nvec = Nvec,
+    time_for_base_R = result[2,]$time,
+    time_for_cpp = result[1,]$time
+  ))
+  
+}
+
+ggplot(results_for_time) + 
+  geom_line(aes(x = Nvec, y = time_for_base_R), col = "red") +
+  geom_line(aes(x = Nvec, y = time_for_cpp), col = "blue")
+```
+
+Plot the divergence of performance (in log seconds) over n using a line geometry. Use two different colors for the R and CPP functions. Make sure there's a color legend on your plot. We wil see later how to create "long" matrices that make such plots easier.
+
+```{r}
+divergence function(p, q):
+  for (i in range(len(p))){
+    return sum(p[i] * log2(p[i]/q[i])
+  }
+
+ggplot(results_for_time) + 
+  geom_line(aes(x = Nvec, y = time_for_base_R), col = "red") +
+  geom_line(aes(x = Nvec, y = time_for_cpp), col = "blue")
+```
+
+Let `Nvec = 500` and vary `n` to be 10, 100, 1000. Plot the density of angles for all three values of `n` on one plot using color to signify `n`. Make sure you have a color legend. This is not easy.
+
+```{r}
+Nvecs = 500
+pacman::p_load(microbenchmark)
+
+
+results_for_time = data.frame(
+  Nvec = numeric(),
+  time_for_base_R = numeric(),
+  time_for_cpp = numeric()
+)
+for (i in 1 : length(Nvecs)){
+  Nvec = Nvecs[i]
+  X = matrix(rnorm(n * Nvec), nrow = Nvec)
+  result = microbenchmark(
+    base_R =all_angles(X),
+    Rcpp = all_angles_cpp(X),
+    times = 1
+  )
+  results_for_time = rbind(results_for_time, data.frame(
+    Nvec = Nvec,
+    time_for_base_R = result[2,]$time,
+    time_for_cpp = result[1,]$time
+  ))
+  
+}
+
+ggplot(results_for_time) + 
+  geom_line(aes(x = Nvec, y = time_for_base_R), col = "red") +
+  geom_line(aes(x = Nvec, y = time_for_cpp), col = "blue")
+```
+
+Write an R function `nth_fibonnaci` that finds the nth Fibonnaci number via recursion but allows you to specify the starting number. For instance, if the sequency started at 1, you get the familiar 1, 1, 2, 3, 5, etc. But if it started at 0.01, you would get 0.01, 0.01, 0.02, 0.03, 0.05, etc.
+
+```{r}
+nth_fibonnaci = function(n, s=1){
+  if (n<=2){
+    s
+  } else {
+    nth_fibonnaci(n-1,s) + nth_fibonnaci(n-2,s)
+  }
+}
+nth_fibonnaci(6)
+```
+
+Write an Rcpp function `nth_fibonnaci_cpp` that does the same thing. Use an IDE if you want, but write it below in-line.
+
+```{r}
+cppFunction('
+  double nth_fibonnaci_cpp(int n, double s){
+    if(n<=2){
+      return s;
+    } else{
+      return (nth_fibonnaci_cpp(n-1, s) + nth_fibonnaci_cpp(n-2,s));
+    }
+  }
+')
+nth_fibonnaci_cpp(6,1)
+```
+
+Time the difference in these functions for n = 100, 200, ...., 1500 while starting the sequence at the smallest possible floating point value in R. Store the results in a matrix.
+
+```{r}
+ns = seq(from = 5, to = 35, by =5)
+s = 1
+pacman::p_load(microbenchmark)
+
+
+results_for_time = data.frame(
+  Nvec = numeric(),
+  time_for_base_R = numeric(),
+  time_for_cpp = numeric()
+)
+for (i in 1 : length(ns)){
+  n = ns[i]
+  result = microbenchmark(
+    base_R =nth_fibonnaci(n,s),
+    Rcpp = nth_fibonnaci_cpp(n,s),
+    times = 1
+  )
+  results_for_time = rbind(results_for_time, data.frame(
+    n = n,
+    time_for_base_R = result[2,]$time,
+    time_for_cpp = result[1,]$time
+  ))
+  
+}
+
+ggplot(results_for_time) + 
+  geom_line(aes(x = n, y = time_for_base_R), col = "red") +
+  geom_line(aes(x = n, y = time_for_cpp), col = "blue")
+```
+
+Plot the divergence of performance (in log seconds) over n using a line geometry. Use two different colors for the R and CPP functions. Make sure there's a color legend on your plot.
+
+```{r}
+#TO-DO
+```
+
+
+
+# Tress, bagged trees and random forests
+
+You can use the `YARF` package if it works, otherwise, use the `randomForest` package (the standard).
+
+Let's take a look at a simulated sine curve. Below is the code for the data generating process:
+
+```{r}
+rm(list = ls())
+n = 500
+sigma = 0.3
+x_min = 0
+x_max = 10
+f_x = function(x){sin(x)}
+y_x = function(x, sigma){f_x(x) + rnorm(n, 0, sigma)}
+x_train = runif(n, x_min, x_max)
+y_train = y_x(x_train, sigma)
+```
+
+Plot an example dataset of size 500:
+
+```{r}
+pacman::p_load(ggplot2)
+ggplot(data.frame(X = x_train, y=y_train)) + 
+  geom_point(aes(x=x_train , y=y_train))
+```
+
+Create a test set of size 500 as well
+
+```{r}
+x_test = runif(500,x_min,x_max)
+y_test = y_x(x_test, sigma)
+
+ggplot(data.frame(X = x_test, y=y_test)) + 
+  geom_point(aes(x=x_test , y=y_test))
+```
+
+Locate the optimal node size hyperparameter for the regression tree model. I believe you can use `randomForest` here by setting `ntree = 1`, `replace = FALSE`, `sampsize = n` (`mtry` is already set to be 1 because there is only one feature) and then you can set `nodesize`. Plot nodesize by out of sample s_e. Plot.
+
+```{r}
+pacman::p_load(randomForest)
+
+nodeSizes = 1:n
+results = matrix(NA, nrow = length(nodeSizes), ncol = 2)
+if (nodeSizes == 0) {
+  stop("data (x) has 0 rows")
+}
+else{ 
+  for (i in 1:length(nodeSizes)) {
+    nodeSize = nodeSizes[i]
+    g = randomForest(as.vector(x_train), as.vector(y_train), nodesize = nodeSize)
+    yhatTest = predict(g, data.frame(x = x_test))
+    results[i,] = c(nodeSize, sd(y_test - yhatTest))
+  }
+}
+
+results[order(results[,2]),][1,]
+```
+
+Plot the regression tree model g(x) with the optimal node size.
+
+```{r}
+# g = YARFCART(data.frame(x=x_train), y_train, nodeSize=21)
+# illustrate_trees(g, max_depth = 3)
+g = randomForest(data.frame(x=x_train), y_train, nodeSize=21)
+plot(g)
+
+```
+
+Provide the bias-variance decomposition of this DGP fit with this model. It is a lot of code, but it is in the practice lectures. If your three numbers don't add up within two significant digits, increase your resolution.
+
+```{r}
+#TO-DO
+```
+
+
+```{r}
+rm(list = ls())
+```
+
+Take a sample of n = 2000 observations from the diamonds data.
+
+```{r}
+rm(list = ls())
+pacman::p_load(ggplot2) #this loads the diamonds data set too
+?diamonds
+dim(diamonds)
+length(diamonds) = 2000
+diamonds$cut = factor(diamonds$cut, ordered = FALSE)
+diamonds$color = factor(diamonds$color, ordered = FALSE)
+diamonds$clarity = factor(diamonds$clarity, ordered = FALSE)
+
+```
+
+Find the bootstrap s_e for a RF model using 1, 2, 5, 10, 20, 30, 40, 50, 100, 200, 300, 400, 500, 1000 trees. If you are using the `randomForest` package, you can calculate oob residuals via `e_oob = y_train - rf_mod$predicted`. Plot.
+
+```{r}
+pacman::p_load(randomForest)
+
+node_sizes=1:n
+SE_node_sizes = array(NA, length(node_sizes))
+for (i in 1:length(node_sizes)){
+  rf_mod = randomForest(data.frame(x=x_train), y=y_train, ntree=1, replace=FALSE, sampsize=n, nodesize=node_sizes[i])
+  yhat_test=predict(rf_mod,data.frame(x=x_test))
+  SE_node_sizes[i]=sd(y_test - yhat_test)
+  plot(SE_node_sizes[i])
+}
+
+for (i in 1:length(node_sizes)){
+  rf_mod = randomForest(data.frame(x=x_train), y=y_train, ntree=2, replace=FALSE, sampsize=n, nodesize=node_sizes[i])
+  yhat_test=predict(rf_mod,data.frame(x=x_test))
+  SE_node_sizes[i]=sd(y_test - yhat_test)
+  plot(SE_node_sizes[i])
+}
+
+for (i in 1:length(node_sizes)){
+  rf_mod = randomForest(data.frame(x=x_train), y=y_train, ntree=5, replace=FALSE, sampsize=n, nodesize=node_sizes[i])
+  yhat_test=predict(rf_mod,data.frame(x=x_test))
+  SE_node_sizes[i]=sd(y_test - yhat_test)
+  plot(SE_node_sizes[i])
+}
+
+for (i in 1:length(node_sizes)){
+  rf_mod = randomForest(data.frame(x=x_train), y=y_train, ntree=10, replace=FALSE, sampsize=n, nodesize=node_sizes[i])
+  yhat_test=predict(rf_mod,data.frame(x=x_test))
+  SE_node_sizes[i]=sd(y_test - yhat_test)
+  plot(SE_node_sizes[i])
+}
+
+for (i in 1:length(node_sizes)){
+  rf_mod = randomForest(data.frame(x=x_train), y=y_train, ntree=20, replace=FALSE, sampsize=n, nodesize=node_sizes[i])
+  yhat_test=predict(rf_mod,data.frame(x=x_test))
+  SE_node_sizes[i]=sd(y_test - yhat_test)
+  plot(SE_node_sizes[i])
+}
+
+for (i in 1:length(node_sizes)){
+  rf_mod = randomForest(data.frame(x=x_train), y=y_train, ntree=30, replace=FALSE, sampsize=n, nodesize=node_sizes[i])
+  yhat_test=predict(rf_mod,data.frame(x=x_test))
+  SE_node_sizes[i]=sd(y_test - yhat_test)
+  plot(SE_node_sizes[i])
+}
+
+for (i in 1:length(node_sizes)){
+  rf_mod = randomForest(data.frame(x=x_train), y=y_train, ntree=40, replace=FALSE, sampsize=n, nodesize=node_sizes[i])
+  yhat_test=predict(rf_mod,data.frame(x=x_test))
+  SE_node_sizes[i]=sd(y_test - yhat_test)
+  plot(SE_node_sizes[i])
+}
+
+for (i in 1:length(node_sizes)){
+  rf_mod = randomForest(data.frame(x=x_train), y=y_train, ntree=50, replace=FALSE, sampsize=n, nodesize=node_sizes[i])
+  yhat_test=predict(rf_mod,data.frame(x=x_test))
+  SE_node_sizes[i]=sd(y_test - yhat_test)
+  plot(SE_node_sizes[i])
+}
+
+for (i in 1:length(node_sizes)){
+  rf_mod = randomForest(data.frame(x=x_train), y=y_train, ntree=100, replace=FALSE, sampsize=n, nodesize=node_sizes[i])
+  yhat_test=predict(rf_mod,data.frame(x=x_test))
+  SE_node_sizes[i]=sd(y_test - yhat_test)
+  plot(SE_node_sizes[i])
+}
+
+for (i in 1:length(node_sizes)){
+  rf_mod = randomForest(data.frame(x=x_train), y=y_train, ntree=200, replace=FALSE, sampsize=n, nodesize=node_sizes[i])
+  yhat_test=predict(rf_mod,data.frame(x=x_test))
+  SE_node_sizes[i]=sd(y_test - yhat_test)
+  plot(SE_node_sizes[i])
+}
+
+for (i in 1:length(node_sizes)){
+  rf_mod = randomForest(data.frame(x=x_train), y=y_train, ntree=300, replace=FALSE, sampsize=n, nodesize=node_sizes[i])
+  yhat_test=predict(rf_mod,data.frame(x=x_test))
+  SE_node_sizes[i]=sd(y_test - yhat_test)
+  plot(SE_node_sizes[i])
+}
+
+for (i in 1:length(node_sizes)){
+  rf_mod = randomForest(data.frame(x=x_train), y=y_train, ntree=400, replace=FALSE, sampsize=n, nodesize=node_sizes[i])
+  yhat_test=predict(rf_mod,data.frame(x=x_test))
+  SE_node_sizes[i]=sd(y_test - yhat_test)
+  plot(SE_node_sizes[i])
+}
+
+for (i in 1:length(node_sizes)){
+  rf_mod = randomForest(data.frame(x=x_train), y=y_train, ntree=500, replace=FALSE, sampsize=n, nodesize=node_sizes[i])
+  yhat_test=predict(rf_mod,data.frame(x=x_test))
+  SE_node_sizes[i]=sd(y_test - yhat_test)
+  plot(SE_node_sizes[i])
+}
+
+for (i in 1:length(node_sizes)){
+  rf_mod = randomForest(data.frame(x=x_train), y=y_train, ntree=1000, replace=FALSE, sampsize=n, nodesize=node_sizes[i])
+  yhat_test=predict(rf_mod,data.frame(x=x_test))
+  SE_node_sizes[i]=sd(y_test - yhat_test)
+  plot(SE_node_sizes[i])
+}
+
+```
+
+Using the diamonds data, find the oob s_e for a bagged-tree model using 1, 2, 5, 10, 20, 30, 40, 50, 100, 200, 300, 400, 500, 1000 trees. If you are using the `randomForest` package, you can create the bagged tree model via setting an argument within the RF constructor function. Plot.
+
+```{r}
+
+rf_mod_train = randomForest(x_train, y_train, num_trees = 1, calculate_oob_error = FALSE, seed = 1999)
+y_hat_test = predict(rf_mod_train, x_test)
+s_e = sd(y_test - y_hat_test)
+plot(s_e)
+
+rf_mod_train = randomForest(x_train, y_train, num_trees = 2, calculate_oob_error = FALSE, seed = 1999)
+y_hat_test = predict(rf_mod_train, x_test)
+s_e = sd(y_test - y_hat_test)
+plot(s_e)
+
+rf_mod_train = randomForest(x_train, y_train, num_trees = 5, calculate_oob_error = FALSE, seed = 1999)
+y_hat_test = predict(rf_mod_train, x_test)
+s_e = sd(y_test - y_hat_test)
+plot(s_e)
+
+rf_mod_train = randomForest(x_train, y_train, num_trees = 10, calculate_oob_error = FALSE, seed = 1999)
+y_hat_test = predict(rf_mod_train, x_test)
+s_e = sd(y_test - y_hat_test)
+plot(s_e)
+
+rf_mod_train = randomForest(x_train, y_train, num_trees = 20, calculate_oob_error = FALSE, seed = 1999)
+y_hat_test = predict(rf_mod_train, x_test)
+s_e = sd(y_test - y_hat_test)
+plot(s_e)
+
+rf_mod_train = randomForest(x_train, y_train, num_trees = 30, calculate_oob_error = FALSE, seed = 1999)
+y_hat_test = predict(rf_mod_train, x_test)
+s_e = sd(y_test - y_hat_test)
+plot(s_e)
+
+rf_mod_train = randomForest(x_train, y_train, num_trees = 40, calculate_oob_error = FALSE, seed = 1999)
+y_hat_test = predict(rf_mod_train, x_test)
+s_e = sd(y_test - y_hat_test)
+plot(s_e)
+
+rf_mod_train = randomForest(x_train, y_train, num_trees = 50, calculate_oob_error = FALSE, seed = 1999)
+y_hat_test = predict(rf_mod_train, x_test)
+s_e = sd(y_test - y_hat_test)
+plot(s_e)
+
+rf_mod_train = randomForest(x_train, y_train, num_trees = 100, calculate_oob_error = FALSE, seed = 1999)
+y_hat_test = predict(rf_mod_train, x_test)
+s_e = sd(y_test - y_hat_test)
+plot(s_e)
+
+rf_mod_train = randomForest(x_train, y_train, num_trees = 200, calculate_oob_error = FALSE, seed = 1999)
+y_hat_test = predict(rf_mod_train, x_test)
+s_e = sd(y_test - y_hat_test)
+plot(s_e)
+
+rf_mod_train = randomForest(x_train, y_train, num_trees = 300, calculate_oob_error = FALSE, seed = 1999)
+y_hat_test = predict(rf_mod_train, x_test)
+s_e = sd(y_test - y_hat_test)
+plot(s_e)
+
+rf_mod_train = randomForest(x_train, y_train, num_trees = 400, calculate_oob_error = FALSE, seed = 1999)
+y_hat_test = predict(rf_mod_train, x_test)
+s_e = sd(y_test - y_hat_test)
+plot(s_e)
+
+rf_mod_train = randomForest(x_train, y_train, num_trees = 500, calculate_oob_error = FALSE, seed = 1999)
+y_hat_test = predict(rf_mod_train, x_test)
+s_e = sd(y_test - y_hat_test)
+plot(s_e)
+
+rf_mod_train = randomForest(x_train, y_train, num_trees = 1000, calculate_oob_error = FALSE, seed = 1999)
+y_hat_test = predict(rf_mod_train, x_test)
+s_e = sd(y_test - y_hat_test)
+plot(s_e)
+```
+
+
+What is the percentage gain / loss in performance of the RF model vs bagged trees model?
+
+```{r}
+#TO-DO
+```
+
+
+Plot oob s_e by number of trees for both RF and bagged trees using a long data frame.
+
+```{r}
+#TO-DO
+```
+
+Build RF models for 500 trees using different `mtry` values: 1, 2, ... the maximum. That maximum will be the number of features assuming that we do not binarize categorical features if you are using `randomForest` or the number of features assuming binarization of the categorical features if you are using `YARF`. Calculate oob s_e for all mtry values. Plot.
+
+```{r}
+rf_mod = randomForest(x_train, y_train, num_trees = num_trees, seed = seed, bootstrap_indices = mod_bag$bootstrap_indices, mtry = 8)
+rf_mod
+```
+
+Plot oob s_e by mtry.
+
+```{r}
+#TO-DO
+```
+
+```{r}
+rm(list = ls())
+```
+
+
+Take a sample of n = 2000 observations from the adult data.
+
+```{r}
+install.packages("magrittr")
+install.packages("dplyr")
+library(magrittr)
+library(dplyr)
+pacman::p_load_gh("coatless/ucidata")
+data(adult)
+na.omit 
+n_samp = 2000
+set.seed(1999)
+adult_samp = adult %>% sample_n(n_samp)
+x = adult_samp
+y = adult_samp$income
+```
+
+Using the adult data, find the bootstrap misclassification error for an RF model using 1, 2, 5, 10, 20, 30, 40, 50, 100, 200, 300, 400, 500, 1000 trees.
+
+```{r}
+mod_rf = YARF(x, y, num_trees = 1, seed = 1999, bootstrap_indices = mod_bag$bootstrap_indices)
+mod_rf$misclassification_error
+
+mod_rf = YARF(x, y, num_trees = 2, seed = 1999, bootstrap_indices = mod_bag$bootstrap_indices)
+mod_rf$misclassification_error
+
+mod_rf = YARF(x, y, num_trees = 5, seed = 1999, bootstrap_indices = mod_bag$bootstrap_indices)
+mod_rf$misclassification_error
+
+mod_rf = YARF(x, y, num_trees = 10, seed = 1999, bootstrap_indices = mod_bag$bootstrap_indices)
+mod_rf$misclassification_error
+
+mod_rf = YARF(x, y, num_trees = 20, seed = 1999, bootstrap_indices = mod_bag$bootstrap_indices)
+mod_rf$misclassification_error
+
+mod_rf = YARF(x, y, num_trees = 30, seed = 1999, bootstrap_indices = mod_bag$bootstrap_indices)
+mod_rf$misclassification_error
+
+mod_rf = YARF(x, y, num_trees = 40, seed = 1999, bootstrap_indices = mod_bag$bootstrap_indices)
+mod_rf$misclassification_error
+
+mod_rf = YARF(x, y, num_trees = 50, seed = 1999, bootstrap_indices = mod_bag$bootstrap_indices)
+mod_rf$misclassification_error
+
+mod_rf = YARF(x, y, num_trees = 100, seed = 1999, bootstrap_indices = mod_bag$bootstrap_indices)
+mod_rf$misclassification_error
+
+mod_rf = YARF(x, y, num_trees = 200, seed = 1999, bootstrap_indices = mod_bag$bootstrap_indices)
+mod_rf$misclassification_error
+
+mod_rf = YARF(x, y, num_trees = 300, seed = 1999, bootstrap_indices = mod_bag$bootstrap_indices)
+mod_rf$misclassification_error
+
+mod_rf = YARF(x, y, num_trees = 400, seed = 1999, bootstrap_indices = mod_bag$bootstrap_indices)
+mod_rf$misclassification_error
+
+mod_rf = YARF(x, y, num_trees = 500, seed = 1999, bootstrap_indices = mod_bag$bootstrap_indices)
+mod_rf$misclassification_error
+
+mod_rf = YARF(x, y, num_trees = 1000, seed = 1999, bootstrap_indices = mod_bag$bootstrap_indices)
+mod_rf$misclassification_error
+```
+
+Using the adult data, find the bootstrap misclassification error for a bagged-tree model using 1, 2, 5, 10, 20, 30, 40, 50, 100, 200, 300, 400, 500, 1000 trees. Plot.
+
+```{r}
+mod_bag = YARFBAG(X, y, num_trees = 1, seed = 1999)
+mod_bag$misclassification_error
+
+mod_bag = YARFBAG(X, y, num_trees = 2, seed = 1999)
+mod_bag$misclassification_error
+
+mod_bag = YARFBAG(X, y, num_trees = 5, seed = 1999)
+mod_bag$misclassification_error
+
+mod_bag = YARFBAG(X, y, num_trees = 10, seed = 1999)
+mod_bag$misclassification_error
+
+mod_bag = YARFBAG(X, y, num_trees = 20, seed = 1999)
+mod_bag$misclassification_error
+
+mod_bag = YARFBAG(X, y, num_trees = 30, seed = 1999)
+mod_bag$misclassification_error
+
+mod_bag = YARFBAG(X, y, num_trees = 40, seed = 1999)
+mod_bag$misclassification_error
+
+mod_bag = YARFBAG(X, y, num_trees = 50, seed = 1999)
+mod_bag$misclassification_error
+
+mod_bag = YARFBAG(X, y, num_trees = 100, seed = 1999)
+mod_bag$misclassification_error
+
+mod_bag = YARFBAG(X, y, num_trees = 200, seed = 1999)
+mod_bag$misclassification_error
+
+mod_bag = YARFBAG(X, y, num_trees = 300, seed = 1999)
+mod_bag$misclassification_error
+
+mod_bag = YARFBAG(X, y, num_trees = 400, seed = 1999)
+mod_bag$misclassification_error
+
+mod_bag = YARFBAG(X, y, num_trees = 500, seed = 1999)
+mod_bag$misclassification_error
+
+mod_bag = YARFBAG(X, y, num_trees = 1000, seed = 1999)
+mod_bag$misclassification_error
+```
+
+What is the percentage gain / loss in performance of the RF model vs bagged trees model?
+
+```{r}
+#TO-DO
+```
+
+Plot bootstrap misclassification error by number of trees for both RF and bagged trees using a long data frame.
+
+```{r}
+#TO-DO
+```
+
+Build RF models for 500 trees using different `mtry` values: 1, 2, ... the maximum (see above as maximum is defined by the specific RF algorithm implementation). Plot.
+
+```{r}
+#TO-DO
+```
+
+Plot bootstrap misclassification error by `mtry`.
+
+```{r}
+#TO-DO
+```
+
+
+```{r}
+rm(list = ls())
+```
+
+Write a function `random_bagged_ols` which takes as its arguments `X` and `y` with further arguments `num_ols_models` defaulted to 100 and `mtry` defaulted to NULL which then gets set within the function to be 50% of available features. This argument builds an OLS on a bootstrap sample of the data and uses only `mtry < p` of the available features. The function then returns all the `lm` models as a list with size `num_ols_models`.
+
+```{r}
+#TO-DO
+
+```
+
+Load up the Boston Housing Data and separate into `X` and `y`.
+
+```{r}
+#TO-DO
+```
+
+Similar to lab 1, write a function that takes a matrix and punches holes (i.e. sets entries equal to `NA`) randomly with an argument `prob_missing`.
+
+```{r}
+#TO-DO
+```
+
+Create a matrix `Xmiss` which is `X` but has missingness with probability of 10%.
+
+```{r}
+#TO-DO
+```
+
+Use a random forest modeling procedure to iteratively fill in the `NA`'s by predicting each feature of X using every other feature of X. You need to start by filling in the holes to use RF. So fill them in with the average of the feature.
+
+```{r}
+Ximps = list()
+
+
+t = 1
+repeat {
+  for (j in 1 : p){
+    Ximps[[t]][, j] = randomForest(X = Ximps[[j - 1]] %>% select(-j), y = Ximps[[j - 1]][, j])
+  }
+  t = t + 1
+  #stop condition if Ximps[[t]] - Ximps[[t - 1]] is close together
+  if (stop){
+    break
+  }
+}
+```
